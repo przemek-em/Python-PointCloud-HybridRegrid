@@ -1,0 +1,409 @@
+Hybrid Regrid Tk — standalone Python test tool, version 0.6
+==========================================================
+Copyright (c) 2025–2026 Przemysław Mielniczenko
+
+Choose the operation at the top of the window:
+- Rebuild uniform 3D cloud: create a new surface cloud, one point per occupied
+  3D grid cell, with wider gap completion and selectable CPU workers.
+- Hybrid Regrid: heightfield terrain plus selected 3D wall/cave voxels, following
+  PointCloudEditorCpp's HybridRegridFilter.cpp.
+- 3D surface gap filling: add locally interpolated points to holes on arbitrarily
+  oriented point-cloud surfaces, including vertical walls and curved cave sheets.
+
+Version 0.6: fill across a hole's whole boundary
+-----------------------------------------------
+The previous rebuild regularised the scan but still left the reported large
+curved hole partly empty. This version adds boundary-patch completion:
+
+- Rebuild uniform 3D cloud: choose Strong. This runs local sampling first, then
+  fills bounded holes with the new patch method. Balanced keeps the local method.
+- 3D surface gap filling: choose "Boundary patches (bounded holes)" under
+  Interpolation. This is the new GUI default and retains every original point.
+  Plane and Quadratic remain available as the previous conservative methods.
+  Pass count and normal/layer tolerances apply only to those local methods and
+  are disabled for Boundary patches.
+
+For the workspace test.las, use manual spacing 4 and maximum distance/fill reach
+50, with Auto or 8 CPU workers. For rebuild, choose Surface-projected and Strong.
+These numbers use this file's coordinate units; they are not universal presets.
+The automatic reach is intended for smaller holes and can be too small here.
+
+The patch method separates measured surface sheets with a short tangent-edge
+graph, projects connected regions into three surface-chart directions, and
+detects bounded missing regions. It fits a robust quadratic trend around each
+hole, then solves a harmonic residual field across the whole missing interior.
+It does not apply the old per-candidate planar residual gate to a curved patch.
+Small numbers of ambiguous rim cells are omitted from the boundary fit instead
+of discarding the entire hole. Heavily ambiguous charts can still be skipped.
+
+Boundary patches run in parallel. Both modes use the same patch engine. Output
+uses one representative per new world-grid cell, with no replacement of existing
+records in surface-fill mode. This mode uses a smaller generated-point separation
+(0.25 x spacing) than the old local methods (0.7 x spacing), reducing rim gaps.
+New patch attributes come from the nearest measured sample on the same chart.
+
+Chart grids are limited to 2,000,000 cells. Tiny sampling gaps of fewer than four
+chart cells are left to local sampling; the boundary method targets larger holes.
+Surface mode permits 4,000,000 tested patch proposals by default. Rebuild uses
+its 20,000,000-candidate budget for the patch stage. A patch exceeding reach is
+skipped as a whole. Ambiguity, oversized charts and unconverged solves are counted
+in the output report's boundary_patches section. Overlapping charts can describe
+the same physical hole, so chart-patch counts are not unique hole counts.
+
+This estimates the missing surface; it cannot recover unseen rock detail.
+Bounded real openings can also be patched. Sheet separation depends on measured
+density and resolution, and ambiguous or unsupported regions may remain empty.
+
+The full test.las export was checked with 137 fixed X/Z probe locations inside
+the reported feature, selected from gaps in the original scan. All 137 probes
+are within one output spacing of a new output sample in both modes; the previous
+rebuild covered 109. The largest projected gap decreased from 8.25 to 2.87 input
+units at spacing 4. This verifies coverage in that view, not physical accuracy
+or guaranteed closure of every hole. Surface-fill export retains all 947,043
+original points and adds 2,437. Rebuild exports 108,643 points, including 12,279
+inferred cells. The source scan and diagnostic exports are excluded from the ZIP.
+
+New: rebuild a complete, evenly sampled 3D surface cloud
+------------------------------------------------------
+1. Choose "Rebuild uniform 3D cloud", then your input and a separate output.
+2. Start with Automatic grid spacing, Strong completion and Auto CPU workers.
+3. Choose output positions:
+   Exact grid centres: every coordinate lies on the same regular cubic lattice.
+   Surface-projected: one point per cell, following the fitted surface instead.
+4. Automatic fill reach is 6 x native input spacing. For a larger hole, uncheck
+   "6 x input spacing" and set reach beyond the distance from its centre to the
+   measured rim. Reach is NOT a hole diameter and is independent of grid spacing.
+5. Click "Rebuild new cloud and save". Inspect the output and .regrid.json report.
+   Strong adds boundary patches for larger curved holes. Increasing reach can
+   bring in both rims of a large hole, but can also blend nearby features.
+
+This mode rebuilds the surface sampling; it does not append all irregular input
+points or fill the whole bounding box with solid-volume samples. It works with
+vertical walls, floors, ceilings and curved cave sheets, without a global up axis.
+
+Off only resamples observed cells; existing holes remain. Balanced uses local
+fits. Strong also completes bounded holes from their full surrounding boundary;
+it can close real openings or mix nearby surfaces.
+Spacing must be smaller than the separation between sheets you want to keep.
+No setting can reliably recover missing rock detail that the scan never captured.
+
+Exact centres provide a true lattice but can look stepped and displace a fitted
+point by up to half a cell on each axis. Surface-projected points follow the
+surface (observed cells use their input centroid); they do not have an exactly
+constant point-to-point distance. Even a cubic lattice does not guarantee a
+constant distance between neighbours along a curved surface.
+
+Grid spacing controls the output density. Automatic uses the median non-zero
+nearest-neighbour distance in the input, without the old editor's 2.5x factor.
+With uneven scan density, use manual spacing appropriate to the area of interest.
+Making output spacing smaller adds samples, not measured accuracy. Reconstruction
+uses native input spacing for its reference model, so changing output density
+does not also shrink the neighbourhood used to bridge a hole.
+
+The old filler could stop early because its nearest 96 points all came from one
+rim, its maximum reach scaled with output spacing, or its eight passes ran out.
+The new mode queries near points plus 12 tangent directions at three radii. These
+are lookup probes: fitting still uses actual points in the fixed input file.
+It expands until no more supported cells are found, with a safety ceiling of
+512 rounds. The report records the stop condition and inferred-cell count.
+
+All points in the provided file are reconstruction references in this mode,
+including existing synthetic/generated records. New output rounds never become
+fitting evidence. This differs from the conservative append-only surface mode,
+which excludes marked synthetic records from its support model. Prefer a scan
+with measured input when evaluating reconstruction quality.
+
+Candidate discovery streams disjoint 32 x 32 x 32 tiles with a one-cell halo.
+Local normal estimation and fitting run in bounded parallel batches, with the
+same worker selector as the conservative surface mode. Auto uses up to 8 workers;
+1 selects a serial run. More workers need more memory. Reading, grid sorting,
+candidate discovery and output merging also take time and are partly serial.
+
+Default output limit: 2,000,000 points. Candidate safety limit: 20,000,000 unique
+cells per round, processed tile by tile. Exceeding a limit aborts before output
+is committed. Increase grid spacing or crop the input if the new cloud is too
+large. The output-point limit can also be raised in the GUI if enough RAM is
+available. This remains an in-memory test tool, not an out-of-core reconstructor.
+
+Inferred new cells have regrid_generated=1 in LAS/LAZ/PLY; LAS/LAZ also sets the
+synthetic flag. Resampled observed cells retain their input generated flags.
+Their new positions are representatives, not untouched sensor measurements.
+XYZ cannot store these markers. The source file is never replaced.
+
+Try examples/large_planar_gap.ply with grid spacing 1 and manual fill reach 18.
+Balanced closes all 625 missing cells, including the centre, in the regression
+test. For curved_cave_gap.ply, try Surface-projected, spacing 0.5, Strong and
+manual reach 4. These are synthetic examples, not accuracy claims for real scans.
+
+Windows setup
+-------------
+Install 64-bit Python 3.11 or 3.12 from https://www.python.org/downloads/ with
+Tcl/Tk (included in the normal installer). Extract this whole folder somewhere
+writable and double-click run.bat. The launcher creates a local .venv and
+downloads pinned library wheels on first use. Internet is needed for setup.
+No C++ compiler, PointCloudEditor, CUDA Toolkit or GPU is required.
+
+Setup correction (r2)
+---------------------
+The compatible LAZ pair is laspy[lazrs]==2.6.1 and lazrs==0.7.0. The earlier
+package incorrectly pinned lazrs==0.8.1, outside laspy's supported range.
+The corrected launcher checks exact installed versions and repairs an older
+environment when necessary. You can extract r2 into a new folder or replace
+the application files in your existing folder, then run run.bat again.
+There is no need to reinstall Python for this dependency conflict.
+
+The dependency setup was verified with a fresh Python 3.12 virtual environment
+with system site packages disabled: pip installation and pip check passed.
+This version's 63 regressions and desktop GUI checks passed in that environment.
+To verify setup without opening a window: run.bat --check-setup
+
+Try the new 3D point-cloud gap filling
+------------------------------------
+1. Select "3D surface gap filling" in the top dropdown.
+2. Browse to your LAS/LAZ, point-cloud PLY or XYZ input. Choose a separate output.
+3. Select Boundary patches under Interpolation. Start with Automatic spacing and
+   maximum distance = 3 x spacing for small holes. For the reported test.las hole,
+   use manual spacing 4 and maximum distance 50. CPU workers can stay on Auto.
+4. Click "Fill 3D gaps and save" and compare the output with the source.
+
+Two small synthetic point-cloud examples are in examples/: a vertical wall and
+a curved cave wall with central gaps. For these examples, set target spacing
+manually to 1 and leave the maximum distance at 3 x spacing.
+
+CPU workers
+-----------
+Both 3D modes have a CPU workers selector: Auto, 1, 2, 4, 8, 16 or 32.
+Auto uses up to 8 available logical CPUs, normally leaving one CPU for other
+work. Manual requests are limited to the available CPU count. Use 1 for a
+single-worker run or when memory is tight. More workers need more RAM.
+
+Normal estimation and local plane/quadratic fitting run in parallel batches.
+Each worker owns its intermediate arrays and reads shared input data. Batches
+are merged in input order so scheduling does not change point selection.
+Neighbour queries inside a batch use one thread and BLAS is limited to one
+thread during filling; this avoids each worker launching another CPU pool.
+The added dependency threadpoolctl controls those nested numerical threads.
+
+Only a bounded number of batches is queued. Cancellation stops queued work
+and waits for running batches to finish safely. Grid construction, candidate
+discovery and the final merge/point-spacing checks remain serial. Very small
+clouds or clouds with few gaps may get little speedup. Reading/writing LAZ can
+use its own compression threads, independently of the filling-worker setting.
+The JSON report records the resolved worker limit.
+
+One local benchmark, two synthetic sheets with holes, 46,010 input points:
+version 0.3: 5.00 s; version 0.4 with 1 worker: 4.68 s; 4 workers: 2.21 s;
+8 workers: 1.65 s. All runs produced the same 51,842 output coordinates
+(5,832 additions), verified by an identical SHA-256 hash. These are single-run
+timings on the development PC, not a guaranteed speedup for every dataset.
+
+The input records are kept; estimated points are appended. LAS/LAZ and PLY
+mark those additions with regrid_generated=1. LAS/LAZ also sets synthetic=1.
+XYZ has no per-point generated marker. The output remains a point cloud.
+
+For the Plane/Quadratic local methods, target spacing controls the sparse search
+grid and minimum added-point distance
+(0.7 x spacing). Auto is a starting estimate; a manual value may be more useful
+on a crop or a cloud with uneven density. The maximum gap setting is the maximum
+distance from an added point to a measured input point, NOT a hole diameter.
+Its automatic value is three times spacing. Large gaps may need a larger manual
+distance, but a larger neighbourhood can cross geometric features.
+
+Normals are estimated in 3D from local measured samples. Ambiguous fits are
+checked against candidate local planes so nearby cave sheets can be separated.
+Potential points are projected onto a local plane or quadratic surface patch.
+Measured support must surround the candidate in the local tangent plane.
+Normal-angle and depth tests reject incompatible samples. Spacing should be
+smaller than the separation between nearby surfaces; layer tolerance should
+also be smaller than that separation. Smaller layer/angle tolerances are more
+conservative but can leave curved or noisy areas unfilled.
+
+Only input points without a generated/synthetic marker support interpolation.
+Already-marked input points are preserved but do not become evidence. New points
+can extend the search frontier over multiple passes, but NEVER support a fit or
+relax the distance limit to measured data. This prevents iterative extrapolation
+from progressively invented geometry. Regions with too few reliable supports,
+open edges or ambiguous directions can stay empty. No original points are moved
+in memory; file encoding may introduce the output format's coordinate rounding.
+
+This is a conservative test implementation, not guaranteed recovery of missing
+rock detail. Separate sheets can still be mixed when the input cannot resolve
+them or the spacing/tolerances are too large. Start with a small representative
+crop. Each pass is limited to 1,000,000 candidate cells; the added-point limit
+is 100,000 by default. Reaching a limit aborts before output is committed.
+
+All three modes use the same supported file attributes and safe output mechanism.
+Surface mode reports measured supports, reliable normals, tested candidates,
+resolved spacing/distance, passes and added point count in .regrid.json.
+
+Manual setup
+------------
+python -m venv .venv
+Windows: .venv\Scripts\python -m pip install -r requirements.txt
+Windows: .venv\Scripts\python app.py
+macOS/Linux: .venv/bin/python -m pip install -r requirements.txt
+macOS/Linux: .venv/bin/python app.py
+On Linux, install your distribution's tkinter package if absent.
+
+Suggested first run for Hybrid Regrid
+-------------------------------------
+1. Choose a LAS, LAZ, PLY or whitespace XYZ/TXT point cloud.
+2. Choose a separate output file; the input cannot be overwritten.
+3. Start with Automatic XY cell size, Median height, one heightfield fill pass,
+   Same as XY cell for voxel size, a 45-degree wall threshold, and Keep points
+   below the heightfield with a cave threshold of 1.5 times the XY cell size.
+4. Click Regrid and save, then inspect the output in your point-cloud viewer.
+5. For finer detail on walls/caves, uncheck Same as XY cell and reduce the
+   voxel size. For less terrain averaging, reduce the heightfield cell size.
+   Lowering the wall slope threshold retains more 3D voxel samples.
+
+Z must be the up direction. The tool operates in the file's coordinate units:
+0.01 is one centimetre only if the coordinates are in metres. No reprojection,
+axis rotation or unit conversion is performed. Estimate spacing reads the
+cloud and displays an automatic XY size without creating output.
+
+How Hybrid Regrid works
+-----------------------
+A. Group original points by XY cell. Keep mean X/Y and one representative Z:
+   Median: upper middle sample for even counts (matches C++ nth_element).
+   Mean: average height. Max: highest sample. Min: lowest sample.
+   Colours and intensity are averaged; classification uses a majority vote.
+
+B. Fill small gaps in the 2D heightfield. A missing XY cell qualifies when
+   occupied cells are immediately opposite it on X or Y. Its height is the
+   equal-weight mean of available eight-neighbour heights. Each pass uses
+   only the previous pass's cells. A filled point uses the target XY centre.
+   This does not perform 3D dilation or fill every gap in a vertical wall.
+
+C. Independently group the original input points in cubic 3D voxels and compute
+   one centroid per occupied voxel. Voxel size can differ from XY cell size.
+
+D. Estimate each heightfield cell's slope using its eight neighbours. The rule
+   is atan(max(abs(neighbour_Z - cell_Z) / XY_distance)), in degrees. Diagonals
+   use sqrt(2) times cell size. This is the actual C++ implementation; an old
+   source comment describing Sobel/normals does not describe the algorithm.
+
+E. Output all heightfield points plus voxel centroids satisfying one condition:
+   - Heightfield slope is at least the wall threshold.
+   - If enabled, the voxel is strictly more than cave_delta * XY_cell_size
+     below its corresponding heightfield height.
+   - No heightfield cell covers that voxel centroid's XY position (fringe).
+   Wall, cave and fringe counts use that priority, so each voxel is counted once.
+
+Review findings and limitations
+------------------------------
+The wall test uses HEIGHTFIELD gradients, not fitted point normals. A vertical
+wall wholly inside one XY column can have no neighbouring heightfield gradient
+and may be dropped unless the below-surface rule keeps it. Surfaces above the
+selected height can also be omitted. Median/Mean can create a height between
+separate input sheets. Choose the height statistic and voxel/cell sizes with
+your geometry in mind; compare results to the original scan.
+
+Like the editor, the output concatenates the heightfield and retained voxels.
+These can overlap or coincide in steep areas. There is no global de-duplication,
+surface fitting, visibility check, texture reconstruction or guaranteed recovery
+of unmeasured geometry. Large gaps can remain. Filled heights are estimates.
+Point density and grid resolution are not a certified physical accuracy.
+
+Small port improvements
+-----------------------
+- Float64 coordinates and wide integer keys avoid the C++ 21-bit grid-key range
+  and help retain georeferenced coordinate precision.
+- Classification ties choose the lowest class for deterministic output.
+- RGB/intensity propagate across heightfield fill passes. C++ only searches
+  original cells for filled-point colours; this can leave later infill black
+  when it no longer touches an original cell. Geometry follows the same rule.
+- Added HF points retain the editor's default class 0, with generated markers.
+- Geometry was checked against a separate dictionary implementation of the
+  current C++ rules. The port is not promised to be byte-identical to C++ output.
+
+Files and attributes
+--------------------
+LAS/LAZ: XYZ, 16-bit RGB, intensity, classification and CRS/header records.
+Other point fields, including GPS time, return flags and extra dimensions, come
+from the closest input record to a resampled output point. This is a retained
+representative record, not a new sensor measurement. New HF cells use zeros
+for those fields. Estimated points are marked with synthetic=1 and the extra
+byte regrid_generated=1. Existing generated markers are retained when present.
+Waveform formats 4/5/9/10 are unsupported. COPC input becomes ordinary LAS/LAZ;
+obsolete COPC indexing is removed. LAS scales are adjusted for output precision.
+
+PLY: ASCII and little-/big-endian binary input, with scalar vertices first in
+the file. XYZ, RGB, intensity, classification and regrid_generated are supported.
+Mesh faces, normals and other properties are omitted with a log message.
+Output is binary little-endian with double XYZ, 8-bit RGB and generated markers.
+
+XYZ/TXT: three whitespace-separated columns X Y Z, optionally followed by R G B.
+Lines beginning # are comments. Colours may be 0..1, 0..255 or 0..65535.
+Output keeps XYZ plus 0..255 RGB when present. It cannot retain classification,
+intensity, CRS or generated-point flags. PLY/XYZ do not retain LAS CRS metadata.
+
+The <output>.regrid.json report records both sizes, parameters, original and
+filled heightfield counts, retained wall/cave/fringe counts, bounds, processing
+time, input/output paths and limitations. Retained voxel samples are not newly
+invented gap points; the report's added_points counts only new heightfield cells.
+
+Practical limits and cancellation
+--------------------------------
+This is an in-memory test tool. Start with a cropped cloud. NumPy sorting and
+LAS/LAZ encoding can require several times the input's file size in RAM and
+cannot all be interrupted mid-call. The window stays responsive; cancellation
+takes effect at a checkpoint. The maximum-added-HF-points limit stops excessive
+fill growth before writing output.
+
+An output is committed only after writing a complete temporary file. Cancelling
+before that commit preserves any existing destination. A completed output is
+retained if writing its optional JSON report subsequently fails.
+
+Validation on the development PC
+--------------------------------
+23 regression tests passed, including four height statistics, even-count median,
+flat terrain, steep ramps, stacked sheets/caves, multiple fill passes, colour
+propagation, independent reference comparisons, LAS/LAZ/PLY/XYZ round trips,
+coordinate/CRS retention, generated markers and cancelled export.
+Desktop checks passed: updated controls, spacing estimate, background processing,
+LAZ export, generated marker, JSON report and cancellation.
+Workspace test.las: 947,043 input points -> 512,051 output, with 21,823 filled
+HF cells, 362,654 wall voxels and 20 cave voxels, in approximately 4.6 seconds.
+Timing depends on hardware and settings. The test dataset is not in this ZIP.
+
+Version 0.3 adds 11 surface-fill checks: horizontal/vertical/rotated planes,
+curved cave walls, separate nearby sheets, preservation of input records,
+open-edge rejection, measured-support distance limits, generated-point spacing,
+cancellation/limits, and LAZ markers/reporting. The combined suite has 34 tests.
+The desktop check also exercises the new mode, including a vertical-wall fill.
+
+Version 0.4 adds seven CPU-worker tests (41 total): worker limits, actual
+concurrent batch execution, stable result ordering, exact serial/parallel
+coordinate-and-attribute equivalence, cooperative cancellation, propagation of
+worker exceptions and restoration of BLAS settings. The GUI check covers the
+worker selector together with export and cancellation.
+
+Version 0.5 adds 13 rebuild tests (54 total): exact lattice and centroid sampling,
+complete closure of a 625-cell hole, fine sampling of a vertical wall, separate
+parallel sheets, a curved cave wall, open-edge rejection, reach limits, native
+spacing, exact serial/parallel attribute equivalence, cancellation/budgets,
+LAZ reporting and streamed candidate ownership across spatial tile boundaries.
+The desktop check covers all three modes, including uniform-grid LAZ export.
+
+Version 0.6 adds nine boundary-patch checks (63 total): complete centre coverage,
+an arbitrarily rotated curved wall at large coordinates, separate parallel
+sheets, preservation of an open notch, whole-patch reach rejection, exact
+serial/parallel attributes, cancellation/budgets, append-only LAZ export with
+preserved original records, and Strong rebuild integration. GUI checks include
+the patch-method selection, disabled local-only controls, export and cancellation.
+
+Full workspace scan, new rebuild mode: 947,043 input points -> 539,375 output
+points, including 129,358 inferred cells. Settings: spacing 1.6, Exact grid
+centres, Balanced, automatic reach 3.9064, 8 CPU workers. Completed five growth
+rounds and LAZ export in approximately 57.6 seconds on the development PC.
+Read-back confirmed one unique point per lattice cell, generated markers and
+RGB/intensity/classification. This verifies processing/export, not whether every
+real hole or missing feature was reconstructed correctly. Timings vary.
+At the native automatic spacing (0.6511), this scan exceeded the default
+2,000,000-point budget. Use coarser manual spacing or a higher output budget
+for similarly uneven input. The real scan and its outputs are not in the ZIP.
+
+Original code: MIT (LICENSE). Dependency notices: licenses/.
+Run regression checks: python -m unittest discover -s tests -v
+Optional desktop check: python tests/ui_smoke.py

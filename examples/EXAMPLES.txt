@@ -1,0 +1,33 @@
+Synthetic examples for manual testing; these are not real scans.
+
+Version 0.6: boundary patches
+-----------------------------
+Choose 3D surface gap filling and Boundary patches under Interpolation to keep
+the input points and append a patch. For large_planar_gap.ply, use spacing 1
+and manual maximum distance 18. For curved_cave_gap.ply, try spacing 0.5 and
+maximum distance 4. The local-only pass/angle/layer controls are disabled.
+In Rebuild uniform 3D cloud, Strong now adds the same boundary-patch engine.
+
+New uniform rebuild mode
+------------------------
+large_planar_gap.ply: flat sheet with a 25 x 25 missing patch (625 points).
+Choose Rebuild uniform 3D cloud, grid spacing=1, Balanced, manual fill reach=18.
+The rebuilt cloud should cover the entire central gap. Exact grid centres puts
+all points on a regular lattice. Surface-projected keeps the original plane.
+
+For curved_cave_gap.ply, try Rebuild uniform 3D cloud, Surface-projected,
+spacing=0.5, Strong, and manual reach=4. This produces new, finer sampling.
+Auto or 4 CPU workers can be used for either example.
+
+Conservative append-only surface mode
+-------------------------------------
+Choose 3D surface gap filling, turn off Automatic spacing and set spacing=1.
+Keep maximum distance=3 x spacing and 3 fill passes. Use Quadratic interpolation.
+Save to a separate output and inspect both files in your point-cloud viewer.
+
+vertical_wall_gap.ply: vertical planar surface with a central gap.
+curved_cave_gap.ply: cylindrical wall of radius 8 with a central gap.
+
+Input reference samples in these examples are unmarked supports. Added output
+points carry regrid_generated=1. The conservative mode keeps original input
+points in place; the rebuild mode creates new positions throughout the cloud.

@@ -1,0 +1,35 @@
+Hybrid Regrid Tk — dependency notices
+====================================
+
+The original application and its PLY reader/writer use the MIT license in
+../LICENSE. Dependencies are downloaded separately by pip on first setup.
+This source package does not bundle Python, Tcl/Tk, NumPy/SciPy binaries,
+CUDA, NanoVDB, OpenVDB, or any PointCloudEditor executable/library.
+
+Pinned dependencies used and tested:
+
+NumPy 2.2.6 — BSD-style license
+https://numpy.org/
+Complete installed-package notice: numpy/LICENSE.txt
+This text also contains notices for third-party code in the NumPy wheel.
+
+SciPy 1.16.3 — BSD-style license
+https://scipy.org/
+Complete installed-package notice: scipy/LICENSE.txt
+This text also contains notices for third-party code in the SciPy wheel.
+
+laspy 2.6.1 — BSD-style license
+https://github.com/laspy/laspy
+Complete license: laspy/licenses/LICENSE.txt
+
+lazrs 0.7.0 — MIT license
+https://github.com/laz-rs/laz-rs-python
+Complete license: lazrs/licenses/LICENSE.txt
+
+threadpoolctl 3.6.0 — BSD 3-Clause license
+https://github.com/joblib/threadpoolctl
+Complete license: threadpoolctl/licenses/LICENSE
+Used to prevent nested BLAS thread pools during parallel surface filling.
+
+Python and Tcl/Tk are supplied by the tester's own Python installation.
+No additional PLY, graphics-viewer, mesh-processing or GPU library is needed.
